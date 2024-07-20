@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  labels:
+    app: web-app
+spec:
+  replicas: 4 # Устанавливаем начальное количество реплик
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      containers:
+      - name: web-app
+        image: your-docker-image:latest # Замените на ваш образ
+        resources:
+          requests:
+            memory: "128Mi" # Равное потребление памяти
+            cpu: "0.1" # Постоянное потребление CPU
+          limits:
+            memory: "128Mi"
+            cpu: "1" # Ограничиваем использование CPU на этапе инициализации
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10 # Задержка для инициализации
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - web-app
+              topologyKey: "kubernetes.io/hostname" # Обеспечиваем размещение подов на разных нодах для отказоустойчивости
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-app
+  minReplicas: 2 # Минимальное количество реплик ночью
+  maxReplicas: 10 # Максимальное количество реплик для дневной нагрузки
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50 # Автоскейлинг по CPU
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-app-config
+data:
+  # Вставьте сюда необходимые параметры конфигурации
+  KEY: "value"
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-app-service
+spec:
+  selector:
+    app: web-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
